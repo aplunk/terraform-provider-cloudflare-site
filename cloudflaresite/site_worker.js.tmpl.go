@@ -2,20 +2,8 @@ package cloudflaresite
 
 const siteWorkerTemplate = `
 const namespace = {{ .Namespace }};
-
-const largeFiles = {
-{{- range key, fileManifest := .LargeFiles }}
-{{ name, size := $fileManifest }}
-"{{ $name }}": 0,
-{{ end -}}
-{{ end -}}
-};
-
-const smallFiles = {
-{{- range name := .SmallFiles }}
-"{{ $name }}": 0,
-{{ end -}}
-};
+const largeFiles = {{.LargeFiles }};
+const smallFiles = {{ .SmallFiles }};
 
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request))
@@ -31,7 +19,7 @@ addEventListener('fetch', event => {
      } else if(key in smallFiles) {
         //todo get content type (arrayBuffer for image, blank for text)
         content = await namespace.get(key);
-     } 
+     }
 
      if (content === null) {
          return new Response("not found", {status: 404});

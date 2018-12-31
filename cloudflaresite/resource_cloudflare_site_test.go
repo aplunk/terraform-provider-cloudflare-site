@@ -111,8 +111,79 @@ func TestUploadSite(t *testing.T) {
 		return nil
 	}
 
-	_, err := uploadSite("test_namespace", path.Join(os.TempDir(), "terraform-site-test"), 49, test)
+	_, _, err := uploadSite("test_namespace", path.Join(os.TempDir(), "terraform-site-test"), 49, test)
 	if err != nil && err != io.EOF {
 		t.Fatalf("%+v", err)
+	}
+}
+
+func TestRenderTemplate(t *testing.T) {
+	expected := `
+const namespace = test_namespace;
+const largeFiles = {"large_file_1":["large_file_1","large_file_1_1"]};
+const smallFiles = ["small_file_1","small_file_2"];
+
+addEventListener('fetch', event => {
+    event.respondWith(handleRequest(event.request))
+   })
+
+   async function handleRequest(request) {
+     var url = new URL(request.url);
+     var key = url.hostname.replace(/\//g, "_");
+
+     var content = null;
+     if (key in largeFiles) {
+        content = streamParts(namespace, largeFiles[key]);
+     } else if(key in smallFiles) {
+        //todo get content type (arrayBuffer for image, blank for text)
+        content = await namespace.get(key);
+     }
+
+     if (content === null) {
+         return new Response("not found", {status: 404});
+     }
+
+     var contentType = "text/html";
+     return new Response(content, {headers: {"Content-Type": contentType}});
+   }
+
+function streamParts(namespace, chunkKeys) {
+    return new ReadableStream({
+        start(controller) {
+            // todo not strictly needed if we guarentee a sorted manifest.
+            chunkKeys.sort();
+            for(key in chunkKeys) {
+                const stream = await namespace.get(key, 'stream')
+                stream.read().then(function process({done, value}){
+                    if(done) {
+                        return;
+                    }
+                    controller.enqueue(value);
+                    return ReadableStreamReader.read().then(process);
+                }
+            );
+        }
+        controller.close();
+    }});
+}
+`
+	actual := bytes.NewBuffer([]byte{})
+	err := renderWorkerTemplate(
+		"test_namespace",
+		[]string{"small_file_1", "small_file_2"},
+		map[string][]string{
+			"large_file_1": []string{
+				"large_file_1",
+				"large_file_1_1",
+			},
+		},
+		actual,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if expected != actual.String() {
+		t.Fatalf("expected worker %s\n != actual worker %s", expected, actual)
 	}
 }

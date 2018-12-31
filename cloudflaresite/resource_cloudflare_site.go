@@ -3,6 +3,7 @@ package cloudflaresite
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -119,15 +120,19 @@ func renderWorkerTemplate(namespaceID string, smallFiles []string, largeFiles ma
 		return err
 	}
 
+	sJS, err := json.Marshal(smallFiles)
+	if err != nil {
+		return err
+	}
+
+	lJS, err := json.Marshal(largeFiles)
+	if err != nil {
+		return err
+	}
+
 	return tmpl.ExecuteTemplate(output, "worker", struct {
-		Namespace  string
-		LargeFiles map[string][]string
-		SmallFiles []string
-	}{
-		namespaceID,
-		largeFiles,
-		smallFiles,
-	})
+		Namespace, LargeFiles, SmallFiles string
+	}{namespaceID, string(lJS), string(sJS)})
 }
 
 func resourceCloudflareSiteCreate(d *schema.ResourceData, meta interface{}) error {
